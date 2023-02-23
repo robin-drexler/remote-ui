@@ -7,21 +7,36 @@ export function fromInsideIframe({targetOrigin = '*'} = {}): MessageEndpoint {
     );
   }
 
+  /**
+   * We wait until the document is ready before advertising to the parent that
+   * communication can commence.
+   *
+   * However, it's possible that the parent isn't listening to messages at this time.
+   * Which can lead to communication never starting.
+   *
+   * Therefore we also wait for the parent to send a message once it's ready to (re)send the
+   * ready message from within the child iframe.
+   */
+
   const {parent} = self;
 
   const ready = () => parent.postMessage('remote-ui::ready', targetOrigin);
 
-  // Listening to `readyState` in iframe, though the child iframe could probably
-  // send a `postMessage` that it is ready to receive messages sooner than that.
-  if (document.readyState === 'complete') {
-    ready();
-  } else {
-    document.addEventListener('readystatechange', () => {
-      if (document.readyState === 'complete') {
-        ready();
-      }
-    });
-  }
+  window.addEventListener('message', (event) => {
+    if (event.source !== parent || document.readyState !== 'complete') {
+      return;
+    }
+
+    if (event.data === 'remote-ui::ready') {
+      ready();
+    }
+  });
+
+  document.addEventListener('readystatechange', () => {
+    if (document.readyState === 'complete') {
+      ready();
+    }
+  });
 
   // We need to store the listener, because we wrap it to do some origin checking. Ideally,
   // we’d instead store an `AbortController`, and use its signal to cancel the listeners,
