@@ -12,8 +12,11 @@ import {createEndpoint, fromWebWorker} from '@remote-ui/rpc';
 import {Button} from './components';
 import {Endpoint} from '../types';
 
+let cachedRemoteEndpoint = null;
+
 export function RemoteAppRenderer({
   inputRef,
+  index,
 }: {
   inputRef: React.RefObject<HTMLInputElement>;
 }) {
@@ -22,13 +25,24 @@ export function RemoteAppRenderer({
 
   useEffect(() => {
     async function run() {
-      const remoteEndpoint = createEndpoint<Endpoint>(
-        fromWebWorker(new Worker()),
-      );
+      const remoteEndpoint =
+        cachedRemoteEndpoint ??
+        createEndpoint<Endpoint>(fromWebWorker(new Worker()));
 
-      await remoteEndpoint.call.render(receiver.receive, {
-        getMessage: async () => inputRef.current!.value,
-      });
+      cachedRemoteEndpoint = remoteEndpoint;
+
+      // await remoteEndpoint.call.render(receiver.receive, {
+      //   getMessage: async () => inputRef.current!.value,
+      // });
+
+      await remoteEndpoint.call.loadExtension();
+      await remoteEndpoint.call.render(
+        receiver.receive,
+        {
+          getMessage: async () => inputRef.current!.value,
+        },
+        index,
+      );
     }
     run();
   }, [receiver]);

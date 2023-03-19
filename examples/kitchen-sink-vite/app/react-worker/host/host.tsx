@@ -12,7 +12,12 @@ function App() {
     <main>
       <TextField label="Message for the remote environment" ref={inputRef} />
 
-      <RemoteAppRenderer inputRef={inputRef} />
+      <RemoteAppRenderer index={0} inputRef={inputRef} />
+      <RemoteAppRenderer index={1} inputRef={inputRef} />
+      <RemoteAppRenderer index={2} inputRef={inputRef} />
+      <RemoteAppRenderer index={3} inputRef={inputRef} />
+      <RemoteAppRenderer index={4} inputRef={inputRef} />
+      <RemoteAppRenderer index={5} inputRef={inputRef} />
     </main>
   );
 }
