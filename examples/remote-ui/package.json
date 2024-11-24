@@ -1,0 +1,14 @@
+{
+  "name": "example-remote-ui",
+  "version": "0.0.14",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "start": "vite"
+  },
+  "dependencies": {
+    "@remote-dom/core": "workspace:*",
+    "@remote-ui/core": "^2.2.4",
+    "@remote-ui/rpc": "^1.4.5"
+  }
+}

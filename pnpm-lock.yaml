@@ -127,6 +127,18 @@ importers:
         specifier: ^5.4.0
         version: 5.4.2(@types/node@20.11.16)
 
+  examples/remote-ui:
+    dependencies:
+      '@remote-dom/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@remote-ui/core':
+        specifier: ^2.2.4
+        version: 2.2.4
+      '@remote-ui/rpc':
+        specifier: ^1.4.5
+        version: 1.4.5
+
   packages/core:
     dependencies:
       '@remote-dom/polyfill':

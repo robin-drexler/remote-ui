@@ -1,0 +1,39 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" href="https://fav.farm/🛰️" />
+    <title>Getting started (remote) • Remote DOM</title>
+  </head>
+
+  <body>
+    <div id="root"></div>
+
+    <script type="module">
+      import {createRemoteRoot} from '@remote-ui/core';
+      import {createEndpoint, fromInsideIframe, retain} from '@remote-ui/rpc';
+
+      const endpoint = createEndpoint(fromInsideIframe());
+      endpoint.expose({
+        render(receive) {
+          retain(receive);
+
+          const root = createRemoteRoot(receive);
+
+          root.append(
+            root.createComponent(
+              'Button',
+              {
+                onclick: () => {
+                  console.log('###click');
+                },
+              },
+              'Click me!',
+            ),
+          );
+          root.mount();
+        },
+      });
+    </script>
+  </body>
+</html>
