@@ -285,6 +285,7 @@ function adaptFragmentsInProps(props: any) {
 
 function isFragment(prop: any) {
   return (
+    prop != null &&
     typeof prop === 'object' &&
     'kind' in prop &&
     prop.kind === LEGACY_KIND_FRAGMENT
