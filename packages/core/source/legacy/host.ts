@@ -194,7 +194,8 @@ export function adaptToLegacyRemoteChannel(
               tree[id]?.length ?? 0,
             ] satisfies RemoteMutationRecord);
           } else {
-            const index = tree[id].findIndex(({slot}: any) => slot === key);
+            const index =
+              tree[id]?.findIndex(({slot}: any) => slot === key) ?? -1;
             if (index !== -1) {
               records.push([
                 MUTATION_TYPE_REMOVE_CHILD,
