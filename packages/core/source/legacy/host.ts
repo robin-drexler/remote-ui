@@ -1,25 +1,23 @@
 import {
   KIND_TEXT as LEGACY_KIND_TEXT,
+  KIND_FRAGMENT as LEGACY_KIND_FRAGMENT,
   ACTION_MOUNT as LEGACY_ACTION_MOUNT,
   ACTION_INSERT_CHILD as LEGACY_ACTION_INSERT_CHILD,
   ACTION_REMOVE_CHILD as LEGACY_ACTION_REMOVE_CHILD,
   ACTION_UPDATE_PROPS as LEGACY_ACTION_UPDATE_PROPS,
   ACTION_UPDATE_TEXT as LEGACY_ACTION_UPDATE_TEXT,
-  KIND_FRAGMENT as LEGACY_KIND_FRAGMENT,
-  KIND_COMPONENT as LEGACY_KIND_COMPONENT,
   type RemoteChannel as LegacyRemoteChannel,
   type ActionArgumentMap as LegacyActionArgumentMap,
   type RemoteComponentSerialization as LegacyRemoteComponentSerialization,
-  type RemoteFragmentSerialization as LegacyRemoteFragmentSerialization,
   type RemoteTextSerialization as LegacyRemoteTextSerialization,
-  isRemoteFragment as isLegacyRemoteFragment,
 } from '@remote-ui/core';
+
 import type {
-  RemoteConnection,
   RemoteMutationRecord,
   RemoteTextSerialization,
   RemoteElementSerialization,
-} from '@remote-dom/core';
+  RemoteConnection,
+} from '../types.ts'; // Adjust this import path as needed
 import {
   ROOT_ID,
   NODE_TYPE_TEXT,
@@ -28,7 +26,7 @@ import {
   MUTATION_TYPE_REMOVE_CHILD,
   MUTATION_TYPE_UPDATE_PROPERTY,
   MUTATION_TYPE_UPDATE_TEXT,
-} from '@remote-dom/core';
+} from '../constants.ts';
 
 export interface LegacyRemoteChannelElementMap {
   [key: string]: string;
@@ -36,391 +34,288 @@ export interface LegacyRemoteChannelElementMap {
 
 export interface LegacyRemoteChannelOptions {
   elements?: LegacyRemoteChannelElementMap;
-  slotName?: string;
 }
 
-type LegacyRemoteNode =
-  | LegacyRemoteComponentSerialization
-  | LegacyRemoteTextSerialization
-  | LegacyRemoteFragmentSerialization;
+/**
+ * Adapts a Remote DOM `RemoteConnection` object into a `remote-ui` `RemoteChannel`.
+ * This allows you to use a Remote DOM receiver class on the host, even if the remote
+ * environment is using `remote-ui`.
+ *
+ * @example
+ * ```tsx
+ * import {DOMRemoteReceiver} from '@remote-dom/core/receivers';
+ * import {adaptToLegacyRemoteChannel} from '@remote-dom/core/legacy';
+ *
+ * const receiver = new DOMRemoteReceiver();
+ * const channel = adaptToLegacyRemoteChannel(receiver.connection);
+ *
+ * // Do something with the channel
+ * sendChannelToRemoteEnvironment(channel);
+ * ```
+ */
+export function adaptToLegacyRemoteChannel(
+  connection: RemoteConnection,
+  options?: LegacyRemoteChannelOptions,
+): LegacyRemoteChannel {
+  const tree: Record<string, any> = {};
 
-interface NormalizedNode {
-  id: string;
-  children: NormalizedNode[];
-  props: Record<string, unknown>;
-  slot?: string;
-  type?: string;
-  kind?: number;
-  text?: string;
-}
-
-class NodeManager {
-  nodes = new Map<string, NormalizedNode>();
-
-  attachNode(node: LegacyRemoteNode, slot?: string) {
-    const existingNode = this.nodes.get(node.id);
-    if (existingNode) {
-      return existingNode;
-    }
-
-    const normalizedNode: NormalizedNode = {
+  function persistNode(parentId: string, node: any, index: number) {
+    tree[parentId] = tree[parentId] ?? [];
+    tree[parentId].splice(index, 0, {
       id: node.id,
-      slot,
-      kind: node.kind,
-      props: 'props' in node ? {...node.props} : {},
-      children:
-        'children' in node
-          ? node.children?.map((child) => this.attachNode(child))
-          : [],
-      text: 'text' in node ? node.text : undefined,
-      type: 'type' in node ? node.type : undefined,
-    };
-    this.nodes.set(node.id, normalizedNode);
-
-    return normalizedNode;
-  }
-
-  getFragmentNodeForProp(nodeId: string, propName: string) {
-    const node = this.getNode(nodeId);
-    return node.children.find((child) => child.slot === propName);
-  }
-
-  insertChildAtIndex(
-    parentNodeId: string,
-    child:
-      | LegacyRemoteComponentSerialization
-      | LegacyRemoteTextSerialization
-      | LegacyRemoteFragmentSerialization,
-    index: number,
-    slot?: string,
-  ) {
-    const parentNode = this.nodes.get(parentNodeId);
-    if (!parentNode) {
-      throw new Error('Parent node not found');
-    }
-
-    const node = this.attachNode(child, slot);
-
-    if ('children' in parentNode && Array.isArray(parentNode.children)) {
-      parentNode.children.splice(index, 0, node);
-    }
-    return node;
-  }
-
-  removeChildAtIndex(parentNodeId: string, index: number) {
-    const parentNode = this.nodes.get(parentNodeId);
-    if (!parentNode) {
-      return;
-    }
-
-    const child = parentNode.children?.[index];
-    this.#removeNodeAndChildren(child);
-
-    parentNode.children.splice(index, 1);
-  }
-
-  getNode(nodeId: string) {
-    const node = this.nodes.get(nodeId);
-    if (!node) {
-      throw new Error('Node not found');
-    }
-    return node;
-  }
-
-  #removeNodeAndChildren(normalizedNode: NormalizedNode) {
-    if (
-      'children' in normalizedNode &&
-      Array.isArray(normalizedNode.children)
-    ) {
-      for (const child of normalizedNode.children) {
-        this.#removeNodeAndChildren(child);
-      }
-    }
-
-    this.nodes.delete(normalizedNode.id);
-  }
-}
-
-class RemoteUiAdapter {
-  #nodeManager: NodeManager;
-
-  constructor() {
-    this.#nodeManager = new NodeManager();
-  }
-
-  #addSlotPropsAsChildrenToNode(normalizedNode: NormalizedNode) {
-    for (const [key, value] of Object.entries(normalizedNode.props || {})) {
-      if (isLegacyRemoteFragment(value)) {
-        const normalizedFragmentNode = this.#nodeManager.attachNode(value, key);
-
-        normalizedNode.children.push(normalizedFragmentNode);
-        this.#addSlotPropsAsChildrenToNode(normalizedFragmentNode);
-        delete normalizedNode.props[key];
-      }
-    }
-    normalizedNode.children.forEach((child) => {
-      return this.#addSlotPropsAsChildrenToNode(child);
+      slot: node?.attributes?.slot,
     });
-    return normalizedNode;
-  }
 
-  #adaptLegacyNodeSerialization(
-    child:
-      | LegacyRemoteComponentSerialization
-      | LegacyRemoteTextSerialization
-      | LegacyRemoteFragmentSerialization,
-    options?: LegacyRemoteChannelOptions,
-  ): RemoteElementSerialization | RemoteTextSerialization {
-    switch (child.kind) {
-      case LEGACY_KIND_TEXT:
-        return this.#adaptLegacyTextSerialization(child);
-      case LEGACY_KIND_FRAGMENT:
-        return this.#adaptLegacyFragmentSerialization(child, options);
-      default:
-        return this.#adaptLegacyComponentSerialization(child, options);
+    if (node.children) {
+      for (const [childIndex, child] of node.children.entries()) {
+        persistNode(node.id, child, childIndex);
+      }
     }
   }
 
-  #adaptLegacyTextSerialization({
-    id,
-    text,
-  }: LegacyRemoteTextSerialization): RemoteTextSerialization {
-    return {
-      id,
-      type: NODE_TYPE_TEXT,
-      data: text,
-    };
+  function removeNode(parentId: string, index: number) {
+    const id = tree[parentId][index].id;
+    tree[parentId].splice(index, 1);
+    cleanupNode(id);
   }
 
-  #adaptLegacyComponentSerialization(
-    {id, type, props = {}, children}: LegacyRemoteComponentSerialization,
-    options?: LegacyRemoteChannelOptions,
-  ): RemoteElementSerialization {
-    const element = options?.elements?.[type] ?? type;
+  function cleanupNode(id: string) {
+    if (tree[id]) {
+      for (const child of tree[id]) {
+        cleanupNode(child.id);
+      }
 
-    return {
-      id,
-      type: NODE_TYPE_ELEMENT,
-      element,
-      properties: props,
-      children: children?.map((child) => {
-        return this.#adaptLegacyNodeSerialization(child, options);
-      }),
-    };
+      delete tree[id];
+    }
   }
 
-  #adaptLegacyFragmentSerialization(
-    node: LegacyRemoteComponentSerialization,
-    options?: LegacyRemoteChannelOptions,
-  ): RemoteElementSerialization {
-    const {id, props = {}, children, slot} = node;
-    return {
-      id,
-      type: NODE_TYPE_ELEMENT,
-      element: 'remote-fragment',
-      properties: props,
-      children: children?.map((child) => {
-        return this.#adaptLegacyNodeSerialization(child, options);
-      }),
-      attributes: {slot},
-    };
-  }
+  function mutate(records: RemoteMutationRecord[]) {
+    for (const record of records) {
+      const [mutationType, parentId] = record;
 
-  adaptToLegacyRemoteChannel(
-    connection: RemoteConnection,
-    options?: LegacyRemoteChannelOptions,
-  ): LegacyRemoteChannel {
-    return <T extends keyof LegacyActionArgumentMap>(
-      type: T,
-      ...payload: LegacyActionArgumentMap[T]
-    ) => {
-      console.log('### type', type, payload);
-      switch (type) {
-        case LEGACY_ACTION_MOUNT: {
-          const [nodes] =
-            payload as LegacyActionArgumentMap[typeof LEGACY_ACTION_MOUNT];
-
-          const normalizedRootNode = this.#nodeManager.attachNode({
-            id: ROOT_ID,
-            children: nodes,
-            kind: LEGACY_KIND_COMPONENT,
-            props: {},
-            type: 'root',
-          } satisfies LegacyRemoteComponentSerialization);
-
-          this.#addSlotPropsAsChildrenToNode(normalizedRootNode);
-
-          const records: RemoteMutationRecord[] = [];
-          normalizedRootNode.children.forEach((node, index) => {
-            records.push([
-              MUTATION_TYPE_INSERT_CHILD,
-              ROOT_ID,
-              this.#adaptLegacyNodeSerialization(node, options),
-              index,
-            ]);
-          });
-
-          connection.mutate(records);
+      switch (mutationType) {
+        case MUTATION_TYPE_INSERT_CHILD: {
+          const node = record[2];
+          const index = record[3];
+          persistNode(parentId, node, index);
           break;
         }
+        case MUTATION_TYPE_REMOVE_CHILD:
+          const index = record[2];
+          removeNode(parentId, index);
+          break;
+      }
 
-        case LEGACY_ACTION_INSERT_CHILD: {
-          const [parentId, index, child] =
-            payload as LegacyActionArgumentMap[typeof LEGACY_ACTION_INSERT_CHILD];
+      connection.mutate(records);
+    }
+  }
 
-          const actualParentId = parentId ?? ROOT_ID;
+  return function remoteChannel<T extends keyof LegacyActionArgumentMap>(
+    type: T,
+    ...payload: LegacyActionArgumentMap[T]
+  ) {
+    switch (type) {
+      case LEGACY_ACTION_MOUNT:
+        const [nodes] =
+          payload as LegacyActionArgumentMap[typeof LEGACY_ACTION_MOUNT];
 
-          const normalizedChild = this.#nodeManager.insertChildAtIndex(
-            actualParentId,
-            child,
-            index,
-          );
-          this.#addSlotPropsAsChildrenToNode(normalizedChild);
-
-          connection.mutate([
+        const records = nodes.map(
+          (node, index) =>
             [
               MUTATION_TYPE_INSERT_CHILD,
-              actualParentId,
-              this.#adaptLegacyNodeSerialization(normalizedChild, options),
+              ROOT_ID,
+              adaptLegacyNodeSerialization(node, options),
               index,
-            ],
-          ]);
+            ] satisfies RemoteMutationRecord,
+        );
 
-          break;
-        }
+        mutate(records);
 
-        case LEGACY_ACTION_REMOVE_CHILD: {
-          const [parentId, removeIndex] =
-            payload as LegacyActionArgumentMap[typeof LEGACY_ACTION_REMOVE_CHILD];
+        break;
 
-          const actualParentId = parentId ?? ROOT_ID;
+      case LEGACY_ACTION_INSERT_CHILD:
+        const [parentId, index, child] =
+          payload as LegacyActionArgumentMap[typeof LEGACY_ACTION_INSERT_CHILD];
 
-          this.#nodeManager.removeChildAtIndex(actualParentId, removeIndex);
+        mutate([
+          [
+            MUTATION_TYPE_INSERT_CHILD,
+            parentId ?? ROOT_ID,
+            adaptLegacyNodeSerialization(child, options),
+            index,
+          ],
+        ]);
 
-          connection.mutate([
-            [MUTATION_TYPE_REMOVE_CHILD, actualParentId, removeIndex],
-          ]);
+        break;
 
-          break;
-        }
+      case LEGACY_ACTION_REMOVE_CHILD: {
+        const [parentID, removeIndex] =
+          payload as LegacyActionArgumentMap[typeof LEGACY_ACTION_REMOVE_CHILD];
 
-        case LEGACY_ACTION_UPDATE_TEXT: {
-          const [textId, text] =
-            payload as LegacyActionArgumentMap[typeof LEGACY_ACTION_UPDATE_TEXT];
+        mutate([
+          [MUTATION_TYPE_REMOVE_CHILD, parentID ?? ROOT_ID, removeIndex],
+        ]);
 
-          connection.mutate([[MUTATION_TYPE_UPDATE_TEXT, textId, text]]);
-          break;
-        }
+        break;
+      }
 
-        case LEGACY_ACTION_UPDATE_PROPS: {
-          const [id, props] =
-            payload as LegacyActionArgumentMap[typeof LEGACY_ACTION_UPDATE_PROPS];
+      case LEGACY_ACTION_UPDATE_TEXT: {
+        const [textId, text] =
+          payload as LegacyActionArgumentMap[typeof LEGACY_ACTION_UPDATE_TEXT];
 
-          const additionalChildrenRecords: RemoteMutationRecord[] = [];
+        mutate([[MUTATION_TYPE_UPDATE_TEXT, textId, text]]);
 
-          for (const [key, value] of Object.entries(props)) {
-            if (isLegacyRemoteFragment(value)) {
-              const fragmentNode = this.#nodeManager.getFragmentNodeForProp(
-                id,
-                key,
-              );
-              if (!fragmentNode) {
-                const nodeToInsertTo = this.#nodeManager.getNode(id);
-                const indexToInsertAt = nodeToInsertTo?.children.length ?? 0;
+        break;
+      }
 
-                const normalizedFragmentNode =
-                  this.#nodeManager.insertChildAtIndex(
-                    nodeToInsertTo.id,
-                    value,
-                    indexToInsertAt,
-                    key,
-                  );
+      case LEGACY_ACTION_UPDATE_PROPS: {
+        const [id, props] =
+          payload as LegacyActionArgumentMap[typeof LEGACY_ACTION_UPDATE_PROPS];
 
-                normalizedFragmentNode.children =
-                  normalizedFragmentNode.children.map((child) => {
-                    return this.#addSlotPropsAsChildrenToNode(child);
-                  });
+        const records = [];
 
-                additionalChildrenRecords.push([
-                  MUTATION_TYPE_INSERT_CHILD,
-                  id,
-                  this.#adaptLegacyNodeSerialization(
-                    normalizedFragmentNode,
-                    options,
-                  ),
-                  indexToInsertAt,
-                ]);
-              } else {
-                this.#nodeManager.removeChildAtIndex(fragmentNode.id, 0);
-                const normalizedFragmentNode =
-                  this.#nodeManager.insertChildAtIndex(
-                    fragmentNode.id,
-                    value.children[0],
-                    0,
-                  );
+        for (const [key, value] of Object.entries(props)) {
+          if (isFragment(value)) {
+            const index = tree[id ?? ROOT_ID].findIndex(
+              ({slot}: any) => slot === key,
+            );
 
-                additionalChildrenRecords.push([
-                  MUTATION_TYPE_REMOVE_CHILD,
-                  fragmentNode.id,
-                  0,
-                ]);
-
-                additionalChildrenRecords.push([
-                  MUTATION_TYPE_INSERT_CHILD,
-                  fragmentNode.id,
-                  this.#adaptLegacyNodeSerialization(
-                    normalizedFragmentNode,
-                    options,
-                  ),
-                  0,
-                ]);
-              }
-
-              // TODO: if they already had that fragment before, do we need to update it when the id if the node is different?
-
-              delete props[key];
-            } else {
-              const nodeToRemoveFrom = this.#nodeManager.getNode(id);
-
-              const slotChildIndex = nodeToRemoveFrom.children.findIndex(
-                (child) => child.slot === key,
-              );
-
-              if (slotChildIndex !== -1) {
-                this.#nodeManager.removeChildAtIndex(id, slotChildIndex);
-                additionalChildrenRecords.push([
-                  MUTATION_TYPE_REMOVE_CHILD,
-                  id,
-                  slotChildIndex,
-                ]);
-              }
+            if (index !== -1) {
+              records.push([
+                MUTATION_TYPE_REMOVE_CHILD,
+                id ?? ROOT_ID,
+                index,
+              ] satisfies RemoteMutationRecord);
             }
-          }
 
-          const propRecords = Object.entries(props).map(
-            ([key, value]) =>
-              [
+            records.push([
+              MUTATION_TYPE_INSERT_CHILD,
+              id ?? ROOT_ID,
+              adaptLegacyFragmentSerialization(key, value, options),
+              tree[id ?? ROOT_ID]?.length ?? 0,
+            ] satisfies RemoteMutationRecord);
+          } else {
+            const index = tree[id ?? ROOT_ID].findIndex(
+              ({slot}: any) => slot === key,
+            );
+            if (index !== -1) {
+              records.push([
+                MUTATION_TYPE_REMOVE_CHILD,
+                id ?? ROOT_ID,
+                index,
+              ] satisfies RemoteMutationRecord);
+            } else {
+              records.push([
                 MUTATION_TYPE_UPDATE_PROPERTY,
                 id,
                 key,
                 value,
-              ] satisfies RemoteMutationRecord,
-          );
-
-          connection.mutate([...propRecords, ...additionalChildrenRecords]);
-          break;
+              ] satisfies RemoteMutationRecord);
+            }
+          }
         }
 
-        default:
-          throw new Error(`Unsupported action type: ${type}`);
+        mutate(records);
+
+        break;
       }
-    };
+
+      default:
+        throw new Error(`Unsupported action type: ${type}`);
+    }
+  };
+}
+
+function adaptLegacyNodeSerialization(
+  child: LegacyRemoteComponentSerialization | LegacyRemoteTextSerialization,
+  options?: LegacyRemoteChannelOptions,
+): RemoteElementSerialization | RemoteTextSerialization {
+  if (child.kind === LEGACY_KIND_TEXT) {
+    return adaptLegacyTextSerialization(child);
+  } else {
+    return adaptLegacyComponentSerialization(child, options);
   }
 }
 
-export function adaptToLegacyRemoteChannel(
-  connection: RemoteConnection,
+function adaptLegacyTextSerialization({
+  id,
+  text,
+}: LegacyRemoteTextSerialization): RemoteTextSerialization {
+  return {
+    id,
+    type: NODE_TYPE_TEXT,
+    data: text,
+  };
+}
+
+function adaptLegacyComponentSerialization(
+  {id, type, props, children}: LegacyRemoteComponentSerialization,
+  options?: LegacyRemoteChannelOptions,
+): RemoteElementSerialization {
+  const element = options?.elements?.[type] ?? type;
+
+  const [fragments, properties] = adaptFragmentsInProps(props);
+
+  return {
+    id,
+    type: NODE_TYPE_ELEMENT,
+    element,
+    properties,
+    children: [
+      ...children.map((child) => {
+        return adaptLegacyNodeSerialization(child, options);
+      }),
+      ...adaptLegacyFragmentsSerialization(fragments, options),
+    ],
+  };
+}
+
+function adaptFragmentsInProps(props: any) {
+  const fragments: any = {};
+  const properties: any = {};
+
+  for (const [key, value] of Object.entries(props)) {
+    if (isFragment(value)) {
+      fragments[key] = value;
+    } else {
+      properties[key] = value;
+    }
+  }
+
+  return [fragments, properties];
+}
+
+function isFragment(prop: any) {
+  return (
+    typeof prop === 'object' &&
+    'kind' in prop &&
+    prop.kind === LEGACY_KIND_FRAGMENT
+  );
+}
+
+function adaptLegacyFragmentsSerialization(
+  fragments: any,
   options?: LegacyRemoteChannelOptions,
 ) {
-  return new RemoteUiAdapter().adaptToLegacyRemoteChannel(connection, options);
+  return Object.entries(fragments).map(([slot, fragment]) => {
+    return adaptLegacyFragmentSerialization(slot, fragment, options);
+  });
+}
+
+function adaptLegacyFragmentSerialization(
+  slot: string,
+  fragment: any,
+  options?: LegacyRemoteChannelOptions,
+): RemoteElementSerialization {
+  return {
+    id: fragment.id,
+    element: 'remote-fragment',
+    attributes: {
+      slot,
+    },
+    type: NODE_TYPE_ELEMENT,
+    children: fragment.children.map((child: any) => {
+      return adaptLegacyNodeSerialization(child, options);
+    }),
+  };
 }
