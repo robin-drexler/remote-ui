@@ -176,32 +176,29 @@ export function adaptToLegacyRemoteChannel(
 
         for (const [key, value] of Object.entries(props)) {
           if (isFragment(value)) {
-            const index = tree[id ?? ROOT_ID].findIndex(
-              ({slot}: any) => slot === key,
-            );
+            const index =
+              tree[id]?.findIndex(({slot}: any) => slot === key) ?? -1;
 
             if (index !== -1) {
               records.push([
                 MUTATION_TYPE_REMOVE_CHILD,
-                id ?? ROOT_ID,
+                id,
                 index,
               ] satisfies RemoteMutationRecord);
             }
 
             records.push([
               MUTATION_TYPE_INSERT_CHILD,
-              id ?? ROOT_ID,
+              id,
               adaptLegacyFragmentSerialization(key, value, options),
-              tree[id ?? ROOT_ID]?.length ?? 0,
+              tree[id]?.length ?? 0,
             ] satisfies RemoteMutationRecord);
           } else {
-            const index = tree[id ?? ROOT_ID].findIndex(
-              ({slot}: any) => slot === key,
-            );
+            const index = tree[id].findIndex(({slot}: any) => slot === key);
             if (index !== -1) {
               records.push([
                 MUTATION_TYPE_REMOVE_CHILD,
-                id ?? ROOT_ID,
+                id,
                 index,
               ] satisfies RemoteMutationRecord);
             } else {
