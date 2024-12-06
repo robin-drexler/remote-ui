@@ -31,4 +31,8 @@ render(
   root,
 );
 
-endpoint.call.render(channel);
+endpoint.call.render(channel, {
+  showAlert: (message: string) => {
+    alert(message);
+  },
+});

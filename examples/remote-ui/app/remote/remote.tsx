@@ -8,29 +8,15 @@ import {App} from './app';
 
 const endpoint = createEndpoint(fromInsideIframe());
 endpoint.expose({
-  render(channel) {
+  render(channel, api) {
     retain(channel);
+    retain(api);
 
     const remoteRoot = createRemoteRoot(channel, {
       components: Object.keys(components),
     });
 
-    const modal = remoteRoot.createFragment();
-    modal.appendChild(remoteRoot.createComponent('Modal', {}, ['Hello']));
-    const button = remoteRoot.createComponent('Button', {modal}, ['click me']);
-
-    remoteRoot.appendChild(button);
-
-    setTimeout(() => {
-      const mewModal = remoteRoot.createFragment();
-      mewModal.appendChild(
-        remoteRoot.createComponent('Modal', {}, ['Hello from the new side']),
-      );
-
-      button.updateProps({modal: mewModal});
-    }, 1000);
-
-    // createRoot(remoteRoot).render(<App />);
+    createRoot(remoteRoot).render(<App api={api} />);
     remoteRoot.mount();
   },
 });

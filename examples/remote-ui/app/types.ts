@@ -37,6 +37,8 @@ export interface ModalProperties {
    * Remote DOM, this property can be set using `addEventListener('press')`.
    */
   onClose?(): void;
+
+  primaryAction?: RemoteFragment;
 }
 
 export interface ModalMethods {

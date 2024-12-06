@@ -1,6 +1,14 @@
 import {type ComponentChildren} from 'preact';
 import {forwardRef} from 'preact/compat';
-import {useRef, useImperativeHandle, useEffect} from 'preact/hooks';
+import {
+  useRef,
+  useImperativeHandle,
+  useEffect,
+  useLayoutEffect,
+  useState,
+  useMemo,
+} from 'preact/hooks';
+import {createContext, useContext} from 'preact/compat';
 
 import type {
   ButtonProperties,
@@ -31,15 +39,14 @@ export function Button({
   children?: ComponentChildren;
   modal?: ComponentChildren;
 } & ButtonProperties) {
-  console.log('#modal', modal);
   return (
     <>
       <button
         class="Button"
         type="button"
-        onClick={() =>
-          onPress?.() ?? document.querySelector('dialog')?.showModal()
-        }
+        onClick={() => {
+          onPress?.();
+        }}
       >
         {children}
       </button>
@@ -67,30 +74,11 @@ export const Modal = forwardRef<
     children?: ComponentChildren;
     primaryAction?: ComponentChildren;
   } & ModalProperties
->(function Modal({children, primaryAction, onClose}, ref) {
-  const dialogRef = useRef<HTMLDialogElement>(null);
-
-  useImperativeHandle(ref, () => ({
-    open() {
-      dialogRef.current?.showModal();
-    },
-    close() {
-      dialogRef.current?.close();
-    },
-  }));
-
-  useEffect(() => {
-    dialogRef.current?.showModal();
-
-    return () => {
-      dialogRef.current?.close();
-    };
-  }, [dialogRef.current]);
-
+>(function Modal({children, primaryAction}) {
   return (
-    <dialog ref={dialogRef} class="Modal" onClose={() => onClose?.()}>
+    <div class="Modal">
       <div class="Modal-Content">{children}</div>
       {primaryAction && <div class="Modal-Actions">{primaryAction}</div>}
-    </dialog>
+    </div>
   );
 });

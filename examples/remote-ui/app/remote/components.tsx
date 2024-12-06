@@ -16,4 +16,5 @@ export const Stack = createRemoteReactComponent<'Stack', StackProperties>(
 );
 export const Modal = createRemoteReactComponent<'Modal', ModalProperties>(
   'Modal',
+  {fragmentProps: ['primaryAction']},
 );
